@@ -1,0 +1,31 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.13.35825.156 d17.13
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ReadsFilesTransformSrvc", "ReadsFilesTransformSrvc\ReadsFilesTransformSrvc.csproj", "{BD3646E9-DE7C-49AC-B01F-BD714B2B435B}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ReadsFilesTransform", "ReadsFilesTransform\ReadsFilesTransform.csproj", "{344320C9-5FB5-4FFA-B2C7-43AD9C4AFC66}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{BD3646E9-DE7C-49AC-B01F-BD714B2B435B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{BD3646E9-DE7C-49AC-B01F-BD714B2B435B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{BD3646E9-DE7C-49AC-B01F-BD714B2B435B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{BD3646E9-DE7C-49AC-B01F-BD714B2B435B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{344320C9-5FB5-4FFA-B2C7-43AD9C4AFC66}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{344320C9-5FB5-4FFA-B2C7-43AD9C4AFC66}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{344320C9-5FB5-4FFA-B2C7-43AD9C4AFC66}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{344320C9-5FB5-4FFA-B2C7-43AD9C4AFC66}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {5A45CB06-ADC0-4120-9FEF-246845B203A1}
+	EndGlobalSection
+EndGlobal
