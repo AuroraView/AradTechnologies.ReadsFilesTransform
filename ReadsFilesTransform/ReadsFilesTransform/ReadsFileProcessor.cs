@@ -13,6 +13,19 @@ namespace ReadsFilesTransform
 {
     public class ReadsFileProcessor
     {
+        /// <summary>
+        /// Constants 
+        /// </summary>
+        private const string INPUT_FILES_PATH = "MekorotInputPath";
+        private const string OUTPUT_FILES_PATH = "MekorotOutputPath";
+        private const string ARCHIVE_FILES_PATH = "MekorotArchivePath";
+        private const string ERROR_FILES_PATH = "MekorotErrPath";
+        private const string DEFAULT_ARCHIVE_FILES_PATH = @"%ProgramData%\AradTechnologies\ReadsFilesTransformService\Archive_Files";
+        private const string DEFAULT_ERROR_FILES_PATH = @"%ProgramData%\AradTechnologies\ReadsFilesTransformService\ERR_Files";
+        private const int METER_ID_CSV_POSITION = 2;
+        private const string LOG_FILE_LINE = "-------------------------------------------------------------------------";
+        private const string LOG_FILE_STOP_SRVC = "\n--------------S T O P P I N G   S E R V I C E ->  E R R O R -------------\n";
+
         private FileSystemWatcher _fileWatcher;
         private readonly ILog _logger;
         private Dictionary<string, string> _mappingTable;
@@ -33,19 +46,6 @@ namespace ReadsFilesTransform
         private string _fullErrortPath;
 
         /// <summary>
-        /// Constants 
-        /// </summary>
-        private const string INPUT_FILES_PATH = "MekorotInputPath";
-        private const string OUTPUT_FILES_PATH = "MekorotOutputPath";
-        private const string ARCHIVE_FILES_PATH = "MekorotArchivePath";
-        private const string ERROR_FILES_PATH = "MekorotErrPath";
-        private const string DEFAULT_ARCHIVE_FILES_PATH = @"%ProgramData%\AradTechnologies\ReadsFilesTransformService\Archive_Files";
-        private const string DEFAULT_ERROR_FILES_PATH = @"%ProgramData%\AradTechnologies\ReadsFilesTransformService\ERR_Files";
-        private const int METER_ID_CSV_POSITION = 2;
-        private const string LOG_FILE_LINE = "-------------------------------------------------------------------------";
-        private const string LOG_FILE_STOP_SRVC = "\n--------------S T O P P I N G   S E R V I C E ->  E R R O R -------------\n";
-
-        /// <summary>
         /// C'Tor - ReadsFileProcessor
         /// Initializes a new instance of the <see cref="ReadsFileProcessor" /> class.
         /// </summary>
@@ -54,22 +54,10 @@ namespace ReadsFilesTransform
             _logger = logger;
             try
             {
-                //get paths from App.config
-                _mekorotInputPath = GetFilePath(INPUT_FILES_PATH,string.Empty);
-                _mekorotOutputPath = GetFilePath(OUTPUT_FILES_PATH, string.Empty);
-                _mekorotArchivePath = GetFilePath(ARCHIVE_FILES_PATH, DEFAULT_ARCHIVE_FILES_PATH);
-                _mekorotErrPath = GetFilePath(ERROR_FILES_PATH, DEFAULT_ERROR_FILES_PATH);
-
-                //validate path from configuration exists 
-                //bool isValidPath = IsPathExists(_mekorotInputPath);
-
-
-                //init dbcontext
                 string connectionString = ConfigurationManager.ConnectionStrings["ConnectionString"]?.ConnectionString;
-                var options = new DbContextOptionsBuilder<ReadsFileTransformDbContext>()
-                 .UseSqlServer(connectionString) // Use the correct database provider
-                  .Options;
+                var options = new DbContextOptionsBuilder<ReadsFileTransformDbContext>().UseSqlServer(connectionString).Options;
                 _context = new ReadsFileTransformDbContext(options);
+                InitializeFilesPath();
 
             }
             catch (Exception ex)
@@ -95,7 +83,6 @@ namespace ReadsFilesTransform
             }
             catch (Exception ex)
             {
-                // Rollback the transaction if any error occurs
                 _logger.Error($"Critical error in ReadsFileWatcher() occurred: {ex.Message}");
                 throw;
             }
@@ -123,7 +110,7 @@ namespace ReadsFilesTransform
 
                     //Handle Header - extract senderName 
                     var headerLine = reader.ReadLine();
-                    _senderName = SetSender(headerLine);
+                    _senderName = GetSenderName(headerLine);
 
                     //Handle rowData and counters - Process each line
                     _rowCounter = 0;
@@ -131,8 +118,8 @@ namespace ReadsFilesTransform
                     _successCounter = 0;
 
                     //get target files names 
-                    _fullOutputPath = SetTargetFileName(e.Name, _mekorotOutputPath);
-                    _fullErrortPath = SetTargetFileName(e.Name, _mekorotErrPath);
+                    _fullOutputPath = GetTargetFileName(e.Name, _mekorotOutputPath);
+                    _fullErrortPath = GetTargetFileName(e.Name, _mekorotErrPath);
                     
                     //process row Data 
                     using (var writerSuccess = new StreamWriter(_fullOutputPath, append: false)) // Overwrites the target 
@@ -157,7 +144,7 @@ namespace ReadsFilesTransform
                         writerSuccess.Close();
                         writerError.Close();
                     }
-                    reader.Close(); //close input file
+                    reader.Close();
 
                     // Move file to Archive 
                     _fullArchivePath = Path.Combine(_mekorotArchivePath, e.Name);
@@ -177,7 +164,7 @@ namespace ReadsFilesTransform
                 _logger.Error($"Critical error in ReadsFileProcessor:OnFileCreated: {ex.Message}");
                 _logger.Info(LOG_FILE_LINE + LOG_FILE_STOP_SRVC + LOG_FILE_LINE);
 
-                _context.Database.GetDbConnection().Close(); //  close connection
+                _context.Database.GetDbConnection().Close(); 
                 throw;  
             }
         }
@@ -215,22 +202,21 @@ namespace ReadsFilesTransform
             try
             {
                 _mappingTable = _context.Properties
-                             .Select(p => new { p.HydrologicNo, p.PropertyID })
-                             .Where(p => p.HydrologicNo.HasValue && p.HydrologicNo != 0) // Apply filters
-                             .ToDictionary(p => p.HydrologicNo.ToString(), p => p.PropertyID);
+                                        .Select(p => new { p.HydrologicNo, p.PropertyID })
+                                        .Where(p => p.HydrologicNo.HasValue && p.HydrologicNo != 0) 
+                                        .ToDictionary(p => p.HydrologicNo.ToString(), p => p.PropertyID);
             }
             catch (Exception ex)
             {
-                //error open connection 
                 _logger.Error($"GetHydrologicNoMapping: {ex.Message}");
                 _logger.Error($"GetHydrologicNoMapping: {ex.InnerException.Message}");
             }
         }
 
         /// <summary>
-        /// Sets the name of the target file  
+        /// Gets the name of the target file  
         /// </summary>
-        private string SetTargetFileName(string fileName,string targetFilePath)
+        private string GetTargetFileName(string fileName,string targetFilePath)
         {
             // Handle output files names
             string formattedDateTime = DateTime.Now.ToString("yyyyMMddHHmmss");
@@ -238,23 +224,15 @@ namespace ReadsFilesTransform
             string newFileName = $"{fileInfo.Name.Replace(fileInfo.Extension, "")}_{formattedDateTime}{fileInfo.Extension}";
             string fullPath = Path.Combine(targetFilePath, newFileName);
 
-            //in case file with the same name exists in target folders, add datetime sufix
-            if (File.Exists(fullPath))
-            {
-                newFileName = $"{fileInfo.Name.Replace(fileInfo.Extension, "")}_{formattedDateTime}{fileInfo.Extension}";
-                fullPath = Path.Combine(targetFilePath, newFileName);
-            }
             return fullPath;
         }
 
         /// <summary>
-        /// Sets the sender
+        /// Gets the sender
         /// source Company from the file header 
         /// </summary>
-        private string SetSender(string headerLine)
+        private string GetSenderName(string headerLine)
         {
-            //_logger.Info("First row in the file '{FileName}': {FirstLine}", e.Name, firstLine);
-            // Split by ':' to isolate the part after "Header:"
             string senderName = string.Empty;
             string[] row = headerLine.Split(':');
             if (row.Length > 1)
@@ -273,12 +251,12 @@ namespace ReadsFilesTransform
             string[] currRow = line.Split(',');
             string currMeterId = currRow[METER_ID_CSV_POSITION]; 
              
-            //split MeterID  value to FaciliyNumber and MeterNumber 
+            //split MeterID value to FaciliyNumber and MeterNumber 
             string[] currMeterIdSpliter = currMeterId.Split('-');
             string currFaciliyNumber = currMeterIdSpliter[0];
 
-            //   Replace currFaciliyNumber(HydrologicNo) with currentPropertyID  
-            //   if not found - write it to error file.
+            //Replace currFaciliyNumber(HydrologicNo) with currentPropertyID  
+            //if not found - write it to error file.
             string currentPropertyID = string.Empty;
             string newLine = line;
 
@@ -300,7 +278,6 @@ namespace ReadsFilesTransform
         /// </summary>
         private void GetMappingFromDb()
         {
-            //Open the connection and query the mapping
             try
             {
                 _context.Database.GetDbConnection().Open();
@@ -311,7 +288,6 @@ namespace ReadsFilesTransform
                 _logger.Error($"Critical error in ReadsFileProcessor occurred: {ex.Message}");
                 throw;
             }
-            // Read mapping from DB 
             GetHydrologicNoMapping();
         }
         /// <summary>
@@ -334,7 +310,7 @@ namespace ReadsFilesTransform
         /// <param name="fileName">Name of the file.</param>
         private void WriteResultsToDB(string fileName)
         {
-            using (var transaction = _context.Database.BeginTransaction())  // Start transaction
+            using (var transaction = _context.Database.BeginTransaction()) 
             {
                 try
                 {
@@ -349,17 +325,26 @@ namespace ReadsFilesTransform
                         ErrRecordsCount = _errCounter
                     };
 
-                    _context.ReadsFileTransformAudit.Add(auditEntry);  // Insert into table
-                    _context.SaveChanges();  // Commit changes
-                    transaction.Commit();  // Commit transaction
+                    _context.ReadsFileTransformAudit.Add(auditEntry);  
+                    _context.SaveChanges();
+                    transaction.Commit();
                 }
                 catch (Exception ex)
                 {
                     _logger.Error($"Critical error - insert into ReadsFileTransformAudit table .{ex.Message}");
                     transaction.Rollback();
-                    throw;  // Rethrow to signal termination
+                    throw;  
                 }
             }
+        }
+
+        /// <summary>Initializes the files path.</summary>
+        private void InitializeFilesPath()
+        {
+            _mekorotInputPath = GetFilePath(INPUT_FILES_PATH, string.Empty);
+            _mekorotOutputPath = GetFilePath(OUTPUT_FILES_PATH, string.Empty);
+            _mekorotArchivePath = GetFilePath(ARCHIVE_FILES_PATH, DEFAULT_ARCHIVE_FILES_PATH);
+            _mekorotErrPath = GetFilePath(ERROR_FILES_PATH, DEFAULT_ERROR_FILES_PATH);
         }
 
         /// <summary>
@@ -368,16 +353,15 @@ namespace ReadsFilesTransform
         ///  and validate the path exists , if not then use the default paths from the input 
         ///  if defaut path not exists then create it . 
         /// </summary>
-        public string GetFilePath(string inPath, string defaultPath)
+        private string GetFilePath(string inPath, string defaultPath)
         {
             string rawPath = ConfigurationManager.AppSettings[inPath];
             string newPath = Environment.ExpandEnvironmentVariables(rawPath);
 
-            if (!Directory.Exists(newPath) && (defaultPath != string.Empty))
+            if (!Directory.Exists(newPath) && !string.IsNullOrEmpty(defaultPath))
             {
                 newPath = Environment.ExpandEnvironmentVariables(defaultPath);
                 _logger.Info($"path is set to DEFAULT_PATH: {newPath}");
-                //if default directory dont exists - create them 
                 if (!Directory.Exists(newPath))
                 {
                     Directory.CreateDirectory(newPath);
