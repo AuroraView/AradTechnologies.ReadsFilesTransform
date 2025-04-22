@@ -97,15 +97,12 @@ namespace ReadsFilesTransform
             _logger.Info($"New file detected: {e.Name}");
             try
             {
-                //in case of single file - open DB connection and read mapping table. 
-                if (!_isMultiFilesMode)
+                // Ensure input file exists, accessible, Not empty and process it
+                if (File.Exists(e.FullPath) && !IsEmptyInputFile(e))
                 {
-                    GetMappingFromDb();
-                }
+                    //in case of single file - open DB connection and read mapping table.
+                    if (!_isMultiFilesMode) GetMappingFromDb();
 
-                // Ensure input file exists, accessible and process it
-                if (File.Exists(e.FullPath)) 
-                {
                     var reader = new StreamReader(e.FullPath, Encoding.UTF8);
 
                     //Handle Header - extract senderName 
@@ -143,6 +140,7 @@ namespace ReadsFilesTransform
                         }   
                         writerSuccess.Close();
                         writerError.Close();
+                        DeleteEmptyOutputFiles();
                     }
                     reader.Close();
 
@@ -369,6 +367,45 @@ namespace ReadsFilesTransform
                 }
             }
             return newPath;
+        }
+        /// <summary>
+        /// Deletes the empty output files.
+        /// </summary>
+        private void DeleteEmptyOutputFiles()
+        {
+            DeleteEmptyOutputFile(_fullErrortPath);
+            DeleteEmptyOutputFile(_fullOutputPath);
+        }
+
+        /// <summary>
+        /// Deletes the empty output file.
+        /// </summary>
+        private void DeleteEmptyOutputFile(string fileFullPath)
+        {
+            if (File.Exists(fileFullPath) && new FileInfo(fileFullPath).Length == 0)
+            {
+                File.Delete(fileFullPath);
+                Console.WriteLine("File was empty and has been deleted.");
+            }
+        }
+        /// <summary>
+        /// Determines whether [is empty input file]
+        /// </summary>
+        private bool IsEmptyInputFile(FileSystemEventArgs e)
+        {
+            if (new FileInfo(e.FullPath).Length == 0)
+            {
+                _logger.Info($"File is Empty, Skipping processing.");
+                // Move file to Archive 
+                _fullArchivePath = Path.Combine(_mekorotArchivePath, e.Name);
+                if (!File.Exists(_fullArchivePath))
+                {
+                    _logger.Info($"File moved to: {_fullArchivePath}");
+                    File.Move(e.FullPath, _fullArchivePath);
+                }
+                return true;
+            }
+            return false;
         }
     }
 }
