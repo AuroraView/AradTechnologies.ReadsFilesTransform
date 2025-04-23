@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Configuration;
 using System.Collections.Generic;
 using System.IO;
@@ -97,10 +97,11 @@ namespace ReadsFilesTransform
             _logger.Info($"New file detected: {e.Name}");
             try
             {
-                //in case of single file - open DB connection and read mapping table. 
-                if (!_isMultiFilesMode)
+                if (File.Exists(e.FullPath) && new FileInfo(e.FullPath).Length == 0)
                 {
-                    GetMappingFromDb();
+                    HandleDuplicateFileNames(e.FullPath);
+                    File.Move(e.FullPath, GetTargetFileName(e.FullPath, _fullErrortPath));
+                    return;
                 }
 
                 // Ensure input file exists, accessible and process it
@@ -120,7 +121,13 @@ namespace ReadsFilesTransform
                     //get target files names 
                     _fullOutputPath = GetTargetFileName(e.Name, _mekorotOutputPath);
                     _fullErrortPath = GetTargetFileName(e.Name, _mekorotErrPath);
-                    
+
+                    //in case of single file - open DB connection and read mapping table. 
+                    if (!_isMultiFilesMode)
+                    {
+                        GetMappingFromDb();
+                    }
+
                     //process row Data 
                     using (var writerSuccess = new StreamWriter(_fullOutputPath, append: false)) // Overwrites the target 
                     using (var writerError = new StreamWriter(_fullErrortPath, append: false))
@@ -148,10 +155,8 @@ namespace ReadsFilesTransform
 
                     // Move file to Archive 
                     _fullArchivePath = Path.Combine(_mekorotArchivePath, e.Name);
-                    if (!File.Exists(_fullArchivePath))
-                    {
-                        File.Move(e.FullPath, _fullArchivePath);  
-                    }
+                    HandleDuplicateFileNames(_fullArchivePath);
+                    File.Move(e.FullPath, _fullArchivePath);
 
                     WriteResultsToLog(e.Name);
                     WriteResultsToDB(e.Name);
@@ -168,6 +173,17 @@ namespace ReadsFilesTransform
                 throw;  
             }
         }
+
+        /// <summary>Handles the duplicate file names.</summary>
+        /// <param name="fullPath">The full path.</param>
+        private void HandleDuplicateFileNames(string fullPath)
+        {
+            if (File.Exists(fullPath))
+            {
+                File.Delete(fullPath);
+            }
+        }
+
         /// <summary>
         /// Sets the multi files flag.
         /// if there are pending files in the input directory then set the flag to true
