@@ -97,8 +97,8 @@ namespace ReadsFilesTransform
             _logger.Info($"New file detected: {e.Name}");
             try
             {
-                // Ensure input file exists, accessible, Not empty ,not duplicate (processed in past) and process it
-                if (File.Exists(e.FullPath) && !IsEmptyInputFile(e) && !IsDuplicateInputFile(e))
+                // Ensure input file exists, accessible and Not empty then process it
+                if (File.Exists(e.FullPath) && !IsEmptyInputFile(e))
                 {
                     //in case of single file - open DB connection and read mapping table.
                     if (!_isMultiFilesMode) GetMappingFromDb();
@@ -146,11 +146,11 @@ namespace ReadsFilesTransform
 
                     // Move file to Archive 
                     _fullArchivePath = Path.Combine(_mekorotArchivePath, e.Name);
-                    if (!File.Exists(_fullArchivePath))
+                    if (File.Exists(_fullArchivePath))
                     {
-                        File.Move(e.FullPath, _fullArchivePath);  
+                        File.Delete(_fullArchivePath);
                     }
-
+                    File.Move(e.FullPath, _fullArchivePath);
                     WriteResultsToLog(e.Name);
                     WriteResultsToDB(e.Name);
                     SetMultiFilesFlag();
@@ -396,41 +396,14 @@ namespace ReadsFilesTransform
             if (new FileInfo(e.FullPath).Length == 0)
             {
                 _logger.Info($"File is Empty, Skipping processing.");
-                // Move file to Archive or to error if duplicate
-                _fullArchivePath = Path.Combine(_mekorotArchivePath, e.Name);
-                if (!File.Exists(_fullArchivePath))
+                _fullErrortPath = Path.Combine(_mekorotErrPath, e.Name);
+                // Move file to Error 
+                if (File.Exists(_fullErrortPath))
                 {
-                    _logger.Info($"File moved to: {_fullArchivePath}");
-                    File.Move(e.FullPath, _fullArchivePath);
+                    File.Delete(_fullErrortPath);
                 }
-                else
-                {
-                    _fullErrortPath = GetTargetFileName(e.Name, _mekorotErrPath);
-                    _logger.Info($"File moved to: {_fullErrortPath}");
-                    Thread.Sleep(500);
-                    File.Move(e.FullPath, _fullErrortPath);
-                }
-                return true;
-            }
-            return false;
-        }
-        /// <summary>
-        /// Determines whether [is duplicate input file] .
-        /// </summary>
-        private bool IsDuplicateInputFile(FileSystemEventArgs e)
-        {
-            _fullArchivePath = Path.Combine(_mekorotArchivePath, e.Name);
-            if (File.Exists(_fullArchivePath))
-            {
-                _logger.Info($"File is duplicate, moved error files and Skip processing.");
-                _fullErrortPath = GetTargetFileName(e.Name, _mekorotErrPath);
-
-                if (!File.Exists(_fullErrortPath))
-                {
-                    _logger.Info($"File moved to: {_fullErrortPath}");
-                    Thread.Sleep(500);
-                    File.Move(e.FullPath, _fullErrortPath);
-                }
+                File.Move(e.FullPath, _fullErrortPath);
+                _logger.Info($"File moved to: {_fullErrortPath}");
                 return true;
             }
             return false;
