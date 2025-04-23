@@ -97,36 +97,35 @@ namespace ReadsFilesTransform
             _logger.Info($"New file detected: {e.Name}");
             try
             {
+                //get target files names 
+                _fullOutputPath = GetTargetFileName(e.Name, _mekorotOutputPath);
+                _fullErrortPath = GetTargetFileName(e.Name, _mekorotErrPath);
+
                 if (File.Exists(e.FullPath) && new FileInfo(e.FullPath).Length == 0)
                 {
-                    HandleDuplicateFileNames(e.FullPath);
-                    File.Move(e.FullPath, GetTargetFileName(e.FullPath, _fullErrortPath));
+                    _logger.Info("File is Empty, Skipping processing...");
+                    HandleDuplicateFileNames(_fullErrortPath);
+                    File.Move(e.FullPath, _fullErrortPath);
                     return;
                 }
 
                 // Ensure input file exists, accessible and process it
                 if (File.Exists(e.FullPath)) 
                 {
-                    var reader = new StreamReader(e.FullPath, Encoding.UTF8);
-
-                    //Handle Header - extract senderName 
-                    var headerLine = reader.ReadLine();
-                    _senderName = GetSenderName(headerLine);
-
-                    //Handle rowData and counters - Process each line
-                    _rowCounter = 0;
-                    _errCounter = 0;
-                    _successCounter = 0;
-
-                    //get target files names 
-                    _fullOutputPath = GetTargetFileName(e.Name, _mekorotOutputPath);
-                    _fullErrortPath = GetTargetFileName(e.Name, _mekorotErrPath);
-
                     //in case of single file - open DB connection and read mapping table. 
                     if (!_isMultiFilesMode)
                     {
                         GetMappingFromDb();
                     }
+                    var reader = new StreamReader(e.FullPath, Encoding.UTF8);
+
+                    //Handle Header - extract senderName 
+                    var headerLine = reader.ReadLine();
+                    _senderName = GetSenderName(headerLine);
+                    //Handle rowData and counters - Process each line
+                    _rowCounter = 0;
+                    _errCounter = 0;
+                    _successCounter = 0;
 
                     //process row Data 
                     using (var writerSuccess = new StreamWriter(_fullOutputPath, append: false)) // Overwrites the target 
@@ -147,12 +146,11 @@ namespace ReadsFilesTransform
                                 writerError.WriteLine(result.Item2);
                                 _errCounter++;
                             }
-                        }   
+                        }
                         writerSuccess.Close();
                         writerError.Close();
                     }
                     reader.Close();
-
                     // Move file to Archive 
                     _fullArchivePath = Path.Combine(_mekorotArchivePath, e.Name);
                     HandleDuplicateFileNames(_fullArchivePath);
@@ -180,8 +178,10 @@ namespace ReadsFilesTransform
         {
             if (File.Exists(fullPath))
             {
+                _logger.Info($"HandleDuplicateFileNames In: {fullPath}");
                 File.Delete(fullPath);
             }
+            Thread.Sleep(500);
         }
 
         /// <summary>
