@@ -109,8 +109,8 @@ namespace ReadsFilesTransform
                 if (File.Exists(e.FullPath) && new FileInfo(e.FullPath).Length == 0)
                 {
                     _logger.Info("File is Empty, Skipping processing....");
-                    HandleDuplicateFileNames(_fullErrortPath);
                     File.Move(e.FullPath, _fullErrortPath);
+                    _logger.Info($"File moved to: {_fullErrortPath}");
                     return;
                 }
 
