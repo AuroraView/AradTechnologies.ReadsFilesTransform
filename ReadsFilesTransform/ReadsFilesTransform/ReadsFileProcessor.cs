@@ -97,15 +97,20 @@ namespace ReadsFilesTransform
             _logger.Info($"New file detected: {e.Name}");
             try
             {
+                while (IsFileLocked(e.FullPath))
+                {
+                    Thread.Sleep(500); // Wait for 500ms
+                }
+
                 //get target files names 
                 _fullOutputPath = GetTargetFileName(e.Name, _mekorotOutputPath);
                 _fullErrortPath = GetTargetFileName(e.Name, _mekorotErrPath);
-
+               
                 if (File.Exists(e.FullPath) && new FileInfo(e.FullPath).Length == 0)
                 {
-                    _logger.Info("File is Empty, Skipping processing...");
-                    HandleDuplicateFileNames(_fullErrortPath);
+                    _logger.Info("File is Empty, Skipping processing....");
                     File.Move(e.FullPath, _fullErrortPath);
+                    _logger.Info($"File moved to: {_fullErrortPath}");
                     return;
                 }
 
@@ -385,6 +390,22 @@ namespace ReadsFilesTransform
                 }
             }
             return newPath;
+        }
+        private static bool IsFileLocked(string path)
+        {
+            try
+            {
+                using (FileStream stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.None))
+                {
+                    // If the file can be opened, it’s not locked
+                    return false;
+                }
+            }
+            catch (IOException)
+            {
+                // File is locked
+                return true;
+            }
         }
     }
 }
