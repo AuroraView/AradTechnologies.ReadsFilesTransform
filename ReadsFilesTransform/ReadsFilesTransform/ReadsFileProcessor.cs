@@ -44,6 +44,7 @@ namespace ReadsFilesTransform
         private string _fullArchivePath;
         private string _fullOutputPath;
         private string _fullErrortPath;
+        private StreamReader _reader = null;
 
         /// <summary>
         /// C'Tor - ReadsFileProcessor
@@ -63,7 +64,7 @@ namespace ReadsFilesTransform
             catch (Exception ex)
             {
                 _logger.Error("Critical error in ReadsFileProcessor.", ex);
-                throw;  
+                throw new Exception("Critical error: Stopping the service.");
             }
         }
 
@@ -75,6 +76,7 @@ namespace ReadsFilesTransform
             try
             {
                 _mappingTable = new Dictionary<string, string>();
+                ProcessExistingFiles(_mekorotInputPath);
                 _fileWatcher = new FileSystemWatcher(_mekorotInputPath);
                 _fileWatcher.NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite;
                 _fileWatcher.Created += OnFileCreated;
@@ -122,40 +124,56 @@ namespace ReadsFilesTransform
                     {
                         GetMappingFromDb();
                     }
-                    var reader = new StreamReader(e.FullPath, Encoding.UTF8);
+                    _reader = new StreamReader(e.FullPath, Encoding.UTF8);
 
                     //Handle Header - extract senderName 
-                    var headerLine = reader.ReadLine();
+                    var headerLine = _reader.ReadLine();
                     _senderName = GetSenderName(headerLine);
                     //Handle rowData and counters - Process each line
                     _rowCounter = 0;
                     _errCounter = 0;
                     _successCounter = 0;
 
-                    //process row Data 
-                    using (var writerSuccess = new StreamWriter(_fullOutputPath, append: false)) // Overwrites the target 
-                    using (var writerError = new StreamWriter(_fullErrortPath, append: false))
-                    {
-                        string line;
-                        while ((line = reader.ReadLine()) != null)
+                    try 
+                    { 
+                        //process row Data 
+                        using (var writerSuccess = new StreamWriter(_fullOutputPath, append: false)) // Overwrites the target 
+                        using (var writerError = new StreamWriter(_fullErrortPath, append: false))
                         {
-                            _rowCounter++;
-                            var result = ReplaceMeterId(line);
-                            if(result.Item1)
+                            string line;
+                            while ((line = _reader.ReadLine()) != null)
                             {
-                                writerSuccess.WriteLine(result.Item2);
-                                _successCounter++;
+                                if (!string.IsNullOrWhiteSpace(line)) // Skip empty or whitespace-only lines
+                                {
+                                    _rowCounter++;
+                                    var result = ReplaceMeterId(line);
+                                    if (result.Item1)
+                                    {
+                                        writerSuccess.WriteLine(result.Item2);
+                                        _successCounter++;
+                                    }
+                                    else
+                                    {
+                                        writerError.WriteLine(result.Item2);
+                                        _errCounter++;
+                                    }
+                                }
                             }
-                            else
-                            {
-                                writerError.WriteLine(result.Item2);
-                                _errCounter++;
-                            }
+                            writerSuccess.Close();
+                            writerError.Close();
                         }
-                        writerSuccess.Close();
-                        writerError.Close();
+                        _reader.Close();
                     }
-                    reader.Close();
+                    catch (Exception ex)
+                    {
+                        _reader.Close();
+                        HandleDuplicateFileNames(_fullOutputPath);
+                        HandleDuplicateFileNames(_fullErrortPath);
+                        File.Move(e.FullPath, _fullErrortPath);
+                        _logger.Error("Corrupted Input file Moved to Error Files Path");
+                        throw;
+                    }
+
                     // Move file to Archive 
                     _fullArchivePath = Path.Combine(_mekorotArchivePath, e.Name);
                     HandleDuplicateFileNames(_fullArchivePath);
@@ -169,10 +187,10 @@ namespace ReadsFilesTransform
             catch (Exception ex)
             {
                 //error open connection 
-                _logger.Error($"Critical error in ReadsFileProcessor:OnFileCreated: {ex.Message}");
+                _logger.Error($"Critical error in ReadsFileProcessor:  {ex.Message}");
+                _reader.Close();
+                _context.Database.GetDbConnection().Close();
                 _logger.Info(LOG_FILE_LINE + LOG_FILE_STOP_SRVC + LOG_FILE_LINE);
-
-                _context.Database.GetDbConnection().Close(); 
                 throw;  
             }
         }
@@ -183,7 +201,6 @@ namespace ReadsFilesTransform
         {
             if (File.Exists(fullPath))
             {
-                _logger.Info($"HandleDuplicateFileNames In: {fullPath}");
                 File.Delete(fullPath);
             }
             Thread.Sleep(500);
@@ -195,24 +212,21 @@ namespace ReadsFilesTransform
         /// </summary>
         private void SetMultiFilesFlag()
         {
-            if (Directory.Exists(_mekorotInputPath))
-            {
-                // Get all files in the folder
-                string[] files = Directory.GetFiles(_mekorotInputPath);
+            // Get all files in the folder
+            string[] files = Directory.GetFiles(_mekorotInputPath);
 
-                if (files.Length > 0) 
-                {
-                    _logger.Info($"The Input folder contains {files.Length} files. DB connection will stay open");
-                    _logger.Info($"Database connection State is: {_context.Database.GetDbConnection().State}");
-                    _isMultiFilesMode = true;
-                }
-                else
-                {
-                    _isMultiFilesMode = false;
-                    _logger.Info("The folder is empty.");
-                    _context.Database.GetDbConnection().Close(); // close connection
-                    _logger.Info($"Database connection State is: {_context.Database.GetDbConnection().State}");
-                }
+            if (files.Length > 0) 
+            {
+                _logger.Info($"The Input folder contains {files.Length} files. DB connection will stay open");
+                _logger.Info($"Database connection State is: {_context.Database.GetDbConnection().State}");
+                _isMultiFilesMode = true;
+            }
+            else
+            {
+                _isMultiFilesMode = false;
+                _logger.Info("The folder is empty.");
+                _context.Database.GetDbConnection().Close(); // close connection
+                _logger.Info($"Database connection State is: {_context.Database.GetDbConnection().State}");
             }
         }
         /// <summary>
@@ -362,10 +376,17 @@ namespace ReadsFilesTransform
         /// <summary>Initializes the files path.</summary>
         private void InitializeFilesPath()
         {
-            _mekorotInputPath = GetFilePath(INPUT_FILES_PATH, string.Empty);
-            _mekorotOutputPath = GetFilePath(OUTPUT_FILES_PATH, string.Empty);
-            _mekorotArchivePath = GetFilePath(ARCHIVE_FILES_PATH, DEFAULT_ARCHIVE_FILES_PATH);
-            _mekorotErrPath = GetFilePath(ERROR_FILES_PATH, DEFAULT_ERROR_FILES_PATH);
+            try
+            {
+                _mekorotInputPath = GetFilePath(INPUT_FILES_PATH, string.Empty);
+                _mekorotOutputPath = GetFilePath(OUTPUT_FILES_PATH, string.Empty);
+                _mekorotArchivePath = GetFilePath(ARCHIVE_FILES_PATH, DEFAULT_ARCHIVE_FILES_PATH);
+                _mekorotErrPath = GetFilePath(ERROR_FILES_PATH, DEFAULT_ERROR_FILES_PATH);
+            }
+            catch (DirectoryNotFoundException ex)
+            {
+                throw;
+            }
         }
 
         /// <summary>
@@ -389,6 +410,9 @@ namespace ReadsFilesTransform
                     _logger.Info($"craeting default directoy: {newPath}");
                 }
             }
+            if (!Directory.Exists(newPath)){
+                throw new DirectoryNotFoundException($"The directory '{newPath}' does not exist.");
+            }
             return newPath;
         }
         private static bool IsFileLocked(string path)
@@ -405,6 +429,19 @@ namespace ReadsFilesTransform
             {
                 // File is locked
                 return true;
+            }
+        }
+        /// <summary>
+        /// Process existing files in the Input directory
+        /// </summary>
+        private void ProcessExistingFiles(string folderPath)
+        {
+            var files = Directory.GetFiles(folderPath);
+            foreach (var file in files)
+            {
+                _logger.Info($"Existing Files detected: {file}");
+                var eventArgs = new FileSystemEventArgs(WatcherChangeTypes.Created, folderPath, Path.GetFileName(file));
+                this.OnFileCreated(null, eventArgs);
             }
         }
     }
