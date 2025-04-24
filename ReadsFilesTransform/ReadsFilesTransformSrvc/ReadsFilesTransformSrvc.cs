@@ -38,7 +38,7 @@ namespace ReadsFilesTransformSrvc
             {
                 _logger.Fatal("Service encountered a fatal error.", ex);
                 _logger.Info("Service shutting down...");
-                this.OnStop();
+                Stop();
             }
         }
 
