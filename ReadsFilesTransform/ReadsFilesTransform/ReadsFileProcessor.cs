@@ -134,33 +134,46 @@ namespace ReadsFilesTransform
                     _errCounter = 0;
                     _successCounter = 0;
 
-                    //process row Data 
-                    using (var writerSuccess = new StreamWriter(_fullOutputPath, append: false)) // Overwrites the target 
-                    using (var writerError = new StreamWriter(_fullErrortPath, append: false))
-                    {
-                        string line;
-                        while ((line = _reader.ReadLine()) != null)
+                    try 
+                    { 
+                        //process row Data 
+                        using (var writerSuccess = new StreamWriter(_fullOutputPath, append: false)) // Overwrites the target 
+                        using (var writerError = new StreamWriter(_fullErrortPath, append: false))
                         {
-                            if (!string.IsNullOrWhiteSpace(line)) // Skip empty or whitespace-only lines
+                            string line;
+                            while ((line = _reader.ReadLine()) != null)
                             {
-                                _rowCounter++;
-                                var result = ReplaceMeterId(line);
-                                if (result.Item1)
+                                if (!string.IsNullOrWhiteSpace(line)) // Skip empty or whitespace-only lines
                                 {
-                                    writerSuccess.WriteLine(result.Item2);
-                                    _successCounter++;
-                                }
-                                else
-                                {
-                                    writerError.WriteLine(result.Item2);
-                                    _errCounter++;
+                                    _rowCounter++;
+                                    var result = ReplaceMeterId(line);
+                                    if (result.Item1)
+                                    {
+                                        writerSuccess.WriteLine(result.Item2);
+                                        _successCounter++;
+                                    }
+                                    else
+                                    {
+                                        writerError.WriteLine(result.Item2);
+                                        _errCounter++;
+                                    }
                                 }
                             }
+                            writerSuccess.Close();
+                            writerError.Close();
                         }
-                        writerSuccess.Close();
-                        writerError.Close();
+                        _reader.Close();
                     }
-                    _reader.Close();
+                    catch (Exception ex)
+                    {
+                        _reader.Close();
+                        HandleDuplicateFileNames(_fullOutputPath);
+                        HandleDuplicateFileNames(_fullErrortPath);
+                        File.Move(e.FullPath, _fullErrortPath);
+                        _logger.Error("Corrupted Input file Moved to Error Files Path");
+                        throw;
+                    }
+
                     // Move file to Archive 
                     _fullArchivePath = Path.Combine(_mekorotArchivePath, e.Name);
                     HandleDuplicateFileNames(_fullArchivePath);
@@ -177,11 +190,6 @@ namespace ReadsFilesTransform
                 _logger.Error($"Critical error in ReadsFileProcessor:  {ex.Message}");
                 _reader.Close();
                 _context.Database.GetDbConnection().Close();
-                
-                HandleDuplicateFileNames(_fullOutputPath);
-                HandleDuplicateFileNames(_fullErrortPath);
-                File.Move(e.FullPath, _fullErrortPath);
-                _logger.Error("Input file Moved to Error Files Path");
                 _logger.Info(LOG_FILE_LINE + LOG_FILE_STOP_SRVC + LOG_FILE_LINE);
                 throw;  
             }
